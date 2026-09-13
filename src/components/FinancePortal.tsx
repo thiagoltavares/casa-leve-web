@@ -418,12 +418,29 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
         : 0,
     [dashboard],
   );
+  const previstos = useMemo(
+    () =>
+      dashboard
+        ? dashboard.itens.reduce(
+            (total, item) =>
+              total +
+              (item.status === "a_pagar" ? item.valor_previsto : 0),
+            0,
+          ) +
+          dashboard.avulsos.reduce(
+            (total, item) =>
+              total +
+              (item.status === "a_pagar" ? item.valor_previsto : 0),
+            0,
+          )
+        : 0,
+    [dashboard],
+  );
   const dashboardExibido = useMemo(() => {
     if (!dashboard) return dashboard;
     const faturasDoMes = faturasOficiais.filter(
       (fatura) => fatura.competencia === competencia,
     );
-    if (!faturasDoMes.length) return dashboard;
     const totalCartoes = faturasDoMes.reduce(
       (total, fatura) => total + fatura.total_aberto,
       0,
@@ -431,13 +448,16 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
     return {
       ...dashboard,
       mes: dashboard.mes
-        ? { ...dashboard.mes, saldo: dashboard.mes.saldo - totalCartoes }
+        ? {
+            ...dashboard.mes,
+            saldo: dashboard.mes.saldo - totalCartoes - previstos,
+          }
         : null,
       cartao: {
         total: totalCartoes,
       },
     };
-  }, [competencia, dashboard, faturasOficiais]);
+  }, [competencia, dashboard, faturasOficiais, previstos]);
   async function lancarPrevistoNoMes(item: Item) {
     if (!casa) return;
     const supabase = getSupabase();
@@ -603,7 +623,8 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
         {tab === "visao" && (
           <Overview
             dashboard={dashboardExibido}
-            gastos={gastos + (dashboardExibido?.cartao.total ?? 0)}
+            gastos={gastos + (dashboardExibido?.cartao.total ?? 0) + previstos}
+            previstos={previstos}
             faturasOficiais={faturasOficiais}
             onShow={() => navegar("despesas")}
           />
@@ -846,11 +867,13 @@ function Login({
 function Overview({
   dashboard,
   gastos,
+  previstos,
   faturasOficiais,
   onShow,
 }: {
   dashboard: Dashboard | null;
   gastos: number;
+  previstos: number;
   faturasOficiais: FaturaOficial[];
   onShow: () => void;
 }) {
@@ -871,6 +894,7 @@ function Overview({
       Math.max(
         item.entrada,
         item.gasto_real,
+        Math.max(0, item.gasto_previsto - item.gasto_real),
         faturasPorMes.get(item.competencia) ?? 0,
       ),
     ),
@@ -899,6 +923,12 @@ function Overview({
           value={money.format(d?.gasto_real ?? 0)}
           detail="Pagamentos sem cartão"
           icon="↑"
+        />
+        <Metric
+          label="Previstos"
+          value={money.format(previstos)}
+          detail="Contas ainda a pagar"
+          icon="◷"
         />
         <Metric
           label="Cartões"
@@ -932,7 +962,10 @@ function Overview({
             </div>
             <button onClick={onShow}>Ver todos</button>
           </div>
-          {(dashboard?.itens ?? []).slice(0, 4).map((item) => (
+          {(dashboard?.itens ?? [])
+            .filter((item) => item.status === "a_pagar")
+            .slice(0, 4)
+            .map((item) => (
             <div className="commitment" key={item.item_id}>
               <span className={item.status === "pago" ? "dot done" : "dot"} />
               <div>
@@ -948,7 +981,7 @@ function Overview({
               </strong>
             </div>
           ))}
-          {!dashboard?.itens.length && (
+          {!(dashboard?.itens ?? []).some((item) => item.status === "a_pagar") && (
             <div className="empty">Ainda não há compromissos neste mês.</div>
           )}
         </article>
@@ -958,12 +991,16 @@ function Overview({
           <div className="card-title">
             <div>
               <h2>Fluxo de caixa</h2>
-              <p>Entradas, gastos pagos e faturas de cartão ao longo do ano.</p>
+              <p>Entradas, gastos pagos, previstos e faturas de cartão ao longo do ano.</p>
             </div>
           </div>
           <div className="cash-bars">
             {serie.map((item) => {
               const cartoes = faturasPorMes.get(item.competencia) ?? 0;
+              const previstosDoMes = Math.max(
+                0,
+                item.gasto_previsto - item.gasto_real,
+              );
               const rotuloMes = new Intl.DateTimeFormat("pt-BR", {
                 month: "short",
               })
@@ -974,7 +1011,7 @@ function Overview({
                   className="cash-bar"
                   key={item.competencia}
                   tabIndex={0}
-                  aria-label={`${rotuloMes}: entradas ${money.format(item.entrada)}, gastos pagos ${money.format(item.gasto_real)} e cartões ${money.format(cartoes)}`}
+                  aria-label={`${rotuloMes}: entradas ${money.format(item.entrada)}, gastos pagos ${money.format(item.gasto_real)}, previstos ${money.format(previstosDoMes)} e cartões ${money.format(cartoes)}`}
                 >
                   <div>
                     <i
@@ -995,6 +1032,12 @@ function Overview({
                         height: `${Math.max(3, (cartoes / maxSerie) * 100)}%`,
                       }}
                     />
+                    <span
+                      className="previsto"
+                      style={{
+                        height: `${Math.max(3, (previstosDoMes / maxSerie) * 100)}%`,
+                      }}
+                    />
                   </div>
                   <small>{rotuloMes}</small>
                   <div className="cash-tooltip" role="tooltip">
@@ -1002,6 +1045,7 @@ function Overview({
                     <span>Entradas <strong>{money.format(item.entrada)}</strong></span>
                     <span>Gastos pagos <strong>{money.format(item.gasto_real)}</strong></span>
                     <span>Cartões <strong>{money.format(cartoes)}</strong></span>
+                    <span>Previstos <strong>{money.format(previstosDoMes)}</strong></span>
                   </div>
                 </div>
               );
@@ -1017,6 +1061,9 @@ function Overview({
             <span>
               <i /> Cartões
             </span>
+            <span>
+              <i /> Previstos
+            </span>
           </div>
         </article>
         <article className="card month-reading">
@@ -1029,6 +1076,10 @@ function Overview({
           <div>
             <span>Gastos pagos</span>
             <strong>{money.format(d?.gasto_real ?? 0)}</strong>
+          </div>
+          <div>
+            <span>Previstos</span>
+            <strong>{money.format(previstos)}</strong>
           </div>
           <div>
             <span>Faturas de cartão</span>
