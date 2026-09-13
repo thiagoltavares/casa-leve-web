@@ -9,11 +9,12 @@ import { getSupabase } from "@/lib/supabase";
 import "@/app/portal.css";
 
 type Status = "pago" | "a_pagar" | "na";
-type Tab = "visao" | "despesas" | "cartoes" | "analises";
+type Tab = "visao" | "despesas" | "previstos" | "cartoes" | "analises";
 
 const rotasFinancas: Record<Tab, string> = {
   visao: "/financas/visao-geral",
   despesas: "/financas/lancamentos",
+  previstos: "/financas/previstos",
   cartoes: "/financas/cartoes",
   analises: "/financas/analises",
 };
@@ -558,6 +559,12 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
             <Icon name="list" />Lançamentos
           </button>
           <button
+            className={tab === "previstos" ? "active" : ""}
+            onClick={() => navegar("previstos")}
+          >
+            <Icon name="chart" />Previstos
+          </button>
+          <button
             className={tab === "cartoes" ? "active" : ""}
             onClick={() => navegar("cartoes")}
           >
@@ -573,11 +580,12 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
         <div className="mobile-navigation">
           <button className="mobile-nav-toggle" type="button" onClick={() => setMobileMenuOpen((open) => !open)} aria-expanded={mobileMenuOpen}>
             <Icon name={tab === "visao" ? "grid" : tab === "despesas" ? "list" : tab === "cartoes" ? "card" : "chart"} />
-            {tab === "visao" ? "Visão geral" : tab === "despesas" ? "Lançamentos" : tab === "cartoes" ? "Cartões" : "Análises"} <span>⌄</span>
+            {tab === "visao" ? "Visão geral" : tab === "despesas" ? "Lançamentos" : tab === "previstos" ? "Previstos" : tab === "cartoes" ? "Cartões" : "Análises"} <span>⌄</span>
           </button>
           {mobileMenuOpen && <div className="mobile-nav-menu">
             <button onClick={() => navegar("visao")}><Icon name="grid" />Visão geral</button>
             <button onClick={() => navegar("despesas")}><Icon name="list" />Lançamentos</button>
+            <button onClick={() => navegar("previstos")}><Icon name="chart" />Previstos</button>
             <button onClick={() => navegar("cartoes")}><Icon name="card" />Cartões</button>
             <button onClick={() => navegar("analises")}><Icon name="chart" />Análises</button>
           </div>}
@@ -632,7 +640,7 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
             onShow={() => navegar("despesas")}
           />
         )}
-        {tab === "despesas" && (
+        {(tab === "despesas" || tab === "previstos") && (
           <Expenses
             dashboard={dashboard}
             cards={cartoes}
@@ -640,6 +648,7 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
             faturasOficiais={faturasOficiais}
             entries={entradas}
             competencia={competencia}
+            view={tab === "previstos" ? "previstos" : "realizados"}
             onEditEntry={(entry) => {
               setEntradaEditando(entry);
               setModal("entrada");
@@ -1202,6 +1211,7 @@ function Expenses({
   faturasOficiais,
   entries,
   competencia,
+  view,
   onEditEntry,
   onLaunch,
 }: {
@@ -1211,10 +1221,10 @@ function Expenses({
   faturasOficiais: FaturaOficial[];
   entries: Entrada[];
   competencia: string;
+  view: "realizados" | "previstos";
   onEditEntry: (entry: Entrada) => void;
   onLaunch: (item: Item) => void;
 }) {
-  const [view, setView] = useState<"realizados" | "previstos">("realizados");
   const entradasDoMes = entries.filter(
     (entry) =>
       entry.competencia <= competencia &&
@@ -1296,29 +1306,13 @@ function Expenses({
     <article className="card table-card">
       <div className="card-title">
         <div>
-          <h2>Lançamentos</h2>
-          <p>Registre pagamentos e acompanhe os valores previstos.</p>
+          <h2>{view === "previstos" ? "Previstos" : "Lançamentos"}</h2>
+          <p>
+            {view === "previstos"
+              ? "Contas esperadas para o mês. Lance o valor real quando pagar."
+              : "Registros de pagamentos feitos neste mês."}
+          </p>
         </div>
-      </div>
-      <div className="launch-tabs" role="tablist" aria-label="Tipo de lançamento">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "realizados"}
-          className={view === "realizados" ? "active" : ""}
-          onClick={() => setView("realizados")}
-        >
-          Realizados
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "previstos"}
-          className={view === "previstos" ? "active" : ""}
-          onClick={() => setView("previstos")}
-        >
-          Previstos
-        </button>
       </div>
       {!!entradasDoMes.length && (
         <div className="income-list">

@@ -6,6 +6,7 @@ import FinancePortal from "@/components/FinancePortal";
 const tabsPorRota = {
   "/financas/visao-geral": "visao",
   "/financas/lancamentos": "despesas",
+  "/financas/previstos": "previstos",
   "/financas/cartoes": "cartoes",
   "/financas/analises": "analises",
 } as const;
