@@ -1168,23 +1168,24 @@ function Expenses({
       itens: itens.length,
     };
   });
-  const faturas = faturasOficiais
-    .filter((fatura) => fatura.competencia === competencia)
-    .map((fatura) => {
-      const card = cards.find((item) => item.id === fatura.cartao_id);
+  const faturas = cards.map((card) => {
+      const fatura = faturasOficiais.find(
+        (item) =>
+          item.cartao_id === card.id && item.competencia === competencia,
+      );
       const calculada = faturasCalculadas.find(
-        (item) => item.item_id === `fatura-${fatura.cartao_id}`,
+        (item) => item.item_id === `fatura-${card.id}`,
       );
       return {
-        item_id: `fatura-${fatura.cartao_id}`,
-        descricao: card?.nome ?? "Cartão",
-        valor_previsto: fatura.total_aberto,
+        item_id: `fatura-${card.id}`,
+        descricao: card.nome,
+        valor_previsto: fatura?.total_aberto ?? 0,
         valor_real: null,
-        status: "a_pagar" as Status,
-        dia_vencimento: card?.dia_vencimento ?? null,
+        status: fatura?.total_aberto ? ("a_pagar" as Status) : ("na" as Status),
+        dia_vencimento: card.dia_vencimento,
         parcelas_total: null,
         parcela_atual: null,
-        cartao: card?.nome ?? "Cartão",
+        cartao: card.nome,
         itens: calculada?.itens ?? 0,
       };
     });
