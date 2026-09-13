@@ -1264,9 +1264,12 @@ function Expenses({
       return {
         item_id: `fatura-${card.id}`,
         descricao: card.nome,
-        valor_previsto: fatura?.total_aberto ?? 0,
+        valor_previsto: fatura?.total_aberto ?? calculada?.valor_previsto ?? 0,
         valor_real: null,
-        status: fatura?.total_aberto ? ("a_pagar" as Status) : ("na" as Status),
+        status:
+          fatura?.total_aberto || calculada?.valor_previsto
+            ? ("a_pagar" as Status)
+            : ("na" as Status),
         dia_vencimento: card.dia_vencimento,
         parcelas_total: null,
         parcela_atual: null,
