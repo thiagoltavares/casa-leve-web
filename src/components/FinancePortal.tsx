@@ -406,11 +406,13 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
     () =>
       dashboard
         ? dashboard.itens.reduce(
-            (s, i) => s + (i.valor_real ?? i.valor_previsto),
+            (s, i) =>
+              s + (i.status === "pago" ? (i.valor_real ?? i.valor_previsto) : 0),
             0,
           ) +
           dashboard.avulsos.reduce(
-            (s, i) => s + (i.valor_real ?? i.valor_previsto),
+            (s, i) =>
+              s + (i.status === "pago" ? (i.valor_real ?? i.valor_previsto) : 0),
             0,
           )
         : 0,
@@ -422,13 +424,17 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
       (fatura) => fatura.competencia === competencia,
     );
     if (!faturasDoMes.length) return dashboard;
+    const totalCartoes = faturasDoMes.reduce(
+      (total, fatura) => total + fatura.total_aberto,
+      0,
+    );
     return {
       ...dashboard,
+      mes: dashboard.mes
+        ? { ...dashboard.mes, saldo: dashboard.mes.saldo - totalCartoes }
+        : null,
       cartao: {
-        total: faturasDoMes.reduce(
-          (total, fatura) => total + fatura.total_aberto,
-          0,
-        ),
+        total: totalCartoes,
       },
     };
   }, [competencia, dashboard, faturasOficiais]);
@@ -571,7 +577,8 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
         {tab === "visao" && (
           <Overview
             dashboard={dashboardExibido}
-            gastos={gastos}
+            gastos={gastos + (dashboardExibido?.cartao.total ?? 0)}
+            faturasOficiais={faturasOficiais}
             onShow={() => navegar("despesas")}
           />
         )}
@@ -812,10 +819,12 @@ function Login({
 function Overview({
   dashboard,
   gastos,
+  faturasOficiais,
   onShow,
 }: {
   dashboard: Dashboard | null;
   gastos: number;
+  faturasOficiais: FaturaOficial[];
   onShow: () => void;
 }) {
   const d = dashboard?.mes;
@@ -823,9 +832,21 @@ function Overview({
   const saldo = d?.saldo ?? 0;
   const pct = entrada ? Math.min(100, Math.round((gastos / entrada) * 100)) : 0;
   const serie = dashboard?.painel_12m ?? [];
+  const faturasPorMes = new Map<string, number>();
+  for (const fatura of faturasOficiais)
+    faturasPorMes.set(
+      fatura.competencia,
+      (faturasPorMes.get(fatura.competencia) ?? 0) + fatura.total_aberto,
+    );
   const maxSerie = Math.max(
     1,
-    ...serie.map((item) => Math.max(item.entrada, item.gasto_previsto)),
+    ...serie.map((item) =>
+      Math.max(
+        item.entrada,
+        item.gasto_real,
+        faturasPorMes.get(item.competencia) ?? 0,
+      ),
+    ),
   );
   return (
     <>
@@ -847,9 +868,9 @@ function Overview({
           green
         />
         <Metric
-          label="Gastos realizados"
+          label="Gastos pagos"
           value={money.format(d?.gasto_real ?? 0)}
-          detail={`Planejado: ${money.format(d?.gasto_previsto ?? 0)}`}
+          detail="Pagamentos sem cartão"
           icon="↑"
         />
         <Metric
@@ -864,7 +885,7 @@ function Overview({
           <div className="card-title">
             <div>
               <h2>Ritmo do mês</h2>
-              <p>Quanto do orçamento já foi usado</p>
+          <p>Quanto da renda já está comprometida</p>
             </div>
             <b>{pct}%</b>
           </div>
@@ -872,8 +893,8 @@ function Overview({
             <i style={{ width: `${pct}%` }} />
           </div>
           <div className="progress-copy">
-            <span>{money.format(gastos)} gastos</span>
-            <span>{money.format(Math.max(0, entrada - gastos))} livres</span>
+            <span>{money.format(gastos)} comprometidos</span>
+            <span>{money.format(Math.max(0, entrada - gastos))} disponíveis</span>
           </div>
         </article>
         <article className="card commitments">
@@ -910,7 +931,7 @@ function Overview({
           <div className="card-title">
             <div>
               <h2>Fluxo de caixa</h2>
-              <p>Entradas e gastos planejados ao longo do ano.</p>
+              <p>Entradas, gastos pagos e faturas de cartão ao longo do ano.</p>
             </div>
           </div>
           <div className="cash-bars">
@@ -918,13 +939,24 @@ function Overview({
               <div className="cash-bar" key={item.competencia}>
                 <div>
                   <i
+                    className="entrada"
                     style={{
                       height: `${Math.max(3, (item.entrada / maxSerie) * 100)}%`,
                     }}
                   />
                   <em
+                    className="gasto"
                     style={{
-                      height: `${Math.max(3, (item.gasto_previsto / maxSerie) * 100)}%`,
+                      height: `${Math.max(3, (item.gasto_real / maxSerie) * 100)}%`,
+                    }}
+                  />
+                  <b
+                    className="cartao"
+                    style={{
+                      height: `${Math.max(
+                        3,
+                        ((faturasPorMes.get(item.competencia) ?? 0) / maxSerie) * 100,
+                      )}%`,
                     }}
                   />
                 </div>
@@ -941,7 +973,10 @@ function Overview({
               <i /> Entradas
             </span>
             <span>
-              <i /> Gastos planejados
+              <i /> Gastos pagos
+            </span>
+            <span>
+              <i /> Cartões
             </span>
           </div>
         </article>
@@ -953,15 +988,15 @@ function Overview({
             </div>
           </div>
           <div>
-            <span>Orçamento previsto</span>
-            <strong>{money.format(d?.gasto_previsto ?? 0)}</strong>
+            <span>Gastos pagos</span>
+            <strong>{money.format(d?.gasto_real ?? 0)}</strong>
           </div>
           <div>
             <span>Faturas de cartão</span>
             <strong>{money.format(dashboard?.cartao.total ?? 0)}</strong>
           </div>
           <div>
-            <span>Saldo após o previsto</span>
+              <span>Saldo projetado</span>
             <strong className={saldo < 0 ? "negative-text" : ""}>
               {money.format(saldo)}
             </strong>
