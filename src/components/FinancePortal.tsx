@@ -414,6 +414,22 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
         : 0,
     [dashboard],
   );
+  const dashboardExibido = useMemo(() => {
+    if (!dashboard) return dashboard;
+    const faturasDoMes = faturasOficiais.filter(
+      (fatura) => fatura.competencia === competencia,
+    );
+    if (!faturasDoMes.length) return dashboard;
+    return {
+      ...dashboard,
+      cartao: {
+        total: faturasDoMes.reduce(
+          (total, fatura) => total + fatura.total_aberto,
+          0,
+        ),
+      },
+    };
+  }, [competencia, dashboard, faturasOficiais]);
   if (!session)
     return (
       <Login
@@ -540,7 +556,7 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
         {error && <div className="error">{error}</div>}
         {tab === "visao" && (
           <Overview
-            dashboard={dashboard}
+            dashboard={dashboardExibido}
             gastos={gastos}
             onShow={() => navegar("despesas")}
           />
