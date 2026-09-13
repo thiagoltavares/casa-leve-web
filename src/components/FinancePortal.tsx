@@ -550,6 +550,7 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
             dashboard={dashboard}
             cards={cartoes}
             purchases={compras}
+            faturasOficiais={faturasOficiais}
             entries={entradas}
             competencia={competencia}
             onEditEntry={(entry) => {
@@ -968,6 +969,7 @@ function Expenses({
   dashboard,
   cards,
   purchases,
+  faturasOficiais,
   entries,
   competencia,
   onEditEntry,
@@ -975,6 +977,7 @@ function Expenses({
   dashboard: Dashboard | null;
   cards: Cartao[];
   purchases: Compra[];
+  faturasOficiais: FaturaOficial[];
   entries: Entrada[];
   competencia: string;
   onEditEntry: (entry: Entrada) => void;
@@ -986,7 +989,7 @@ function Expenses({
         (!entry.competencia_fim || entry.competencia_fim >= competencia)) ||
         (!entry.recorrente && entry.competencia === competencia)),
   );
-  const faturas = Array.from(
+  const faturasCalculadas = Array.from(
     comprasDaFatura(purchases, competencia).reduce((map, compra) => {
       const atual = map.get(compra.cartao_id) ?? [];
       map.set(compra.cartao_id, [...atual, compra]);
@@ -1007,6 +1010,26 @@ function Expenses({
       itens: itens.length,
     };
   });
+  const faturas = faturasOficiais
+    .filter((fatura) => fatura.competencia === competencia)
+    .map((fatura) => {
+      const card = cards.find((item) => item.id === fatura.cartao_id);
+      const calculada = faturasCalculadas.find(
+        (item) => item.item_id === `fatura-${fatura.cartao_id}`,
+      );
+      return {
+        item_id: `fatura-${fatura.cartao_id}`,
+        descricao: card?.nome ?? "Cartão",
+        valor_previsto: fatura.total_aberto,
+        valor_real: null,
+        status: "a_pagar" as Status,
+        dia_vencimento: card?.dia_vencimento ?? null,
+        parcelas_total: null,
+        parcela_atual: null,
+        cartao: card?.nome ?? "Cartão",
+        itens: calculada?.itens ?? 0,
+      };
+    });
   const rows = [
     ...(dashboard?.itens ?? []).map((i) => ({
       ...i,
