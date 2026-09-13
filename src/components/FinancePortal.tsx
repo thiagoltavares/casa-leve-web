@@ -210,6 +210,8 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
   const [faturasOficiais, setFaturasOficiais] = useState<FaturaOficial[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [entradas, setEntradas] = useState<Entrada[]>([]);
+  const [previstoParaLancamento, setPrevistoParaLancamento] =
+    useState<Item | null>(null);
 
   useEffect(() => {
     setTab(initialTab);
@@ -458,10 +460,10 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
       },
     };
   }, [competencia, dashboard, faturasOficiais, previstos]);
-  async function lancarPrevistoNoMes(item: Item) {
-    if (!casa) return;
+  async function registrarRealizado(item: Item, valorReal: number) {
+    if (!casa) return false;
     const supabase = getSupabase();
-    if (!supabase) return;
+    if (!supabase) return false;
     setLoading(true);
     setError("");
     const { error: launchError } = await supabase
@@ -471,7 +473,7 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
           household_id: casa.household_id,
           item_id: item.item_id,
           competencia,
-          valor_real: item.valor_previsto,
+          valor_real: valorReal,
           status: "pago",
           pago_em: new Date().toISOString(),
         },
@@ -480,9 +482,10 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
     if (launchError) {
       setError(launchError.message);
       setLoading(false);
-      return;
+      return false;
     }
     await carregar();
+    return true;
   }
   if (!session)
     return (
@@ -641,7 +644,7 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
               setEntradaEditando(entry);
               setModal("entrada");
             }}
-            onLaunch={lancarPrevistoNoMes}
+            onLaunch={setPrevistoParaLancamento}
           />
         )}
         {tab === "cartoes" && (
@@ -709,6 +712,16 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
             setModal(null);
             setEntradaEditando(null);
             carregar();
+          }}
+        />
+      )}
+      {previstoParaLancamento && (
+        <RealizedRecord
+          item={previstoParaLancamento}
+          onClose={() => setPrevistoParaLancamento(null)}
+          onSave={async (valorReal) => {
+            if (await registrarRealizado(previstoParaLancamento, valorReal))
+              setPrevistoParaLancamento(null);
           }}
         />
       )}
@@ -864,6 +877,68 @@ function Login({
     </main>
   );
 }
+
+function RealizedRecord({
+  item,
+  onClose,
+  onSave,
+}: {
+  item: Item;
+  onClose: () => void;
+  onSave: (valorReal: number) => Promise<void>;
+}) {
+  const [valor, setValor] = useState(String(item.valor_real ?? item.valor_previsto));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const value = Number(valor.replace(",", "."));
+    if (!Number.isFinite(value) || value < 0) {
+      setError("Informe um valor real válido.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await onSave(value);
+    } catch {
+      setError("Não foi possível salvar o lançamento.");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="modal real-record" onSubmit={submit}>
+        <button className="close" type="button" onClick={onClose} aria-label="Fechar">
+          ×
+        </button>
+        <div>
+          <p className="eyebrow">LANÇAR NO REAL</p>
+          <h2>{item.descricao}</h2>
+          <p>Previsto para este mês: {money.format(item.valor_previsto)}</p>
+        </div>
+        <label>
+          Valor realmente pago
+          <input
+            autoFocus
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            type="number"
+            value={valor}
+            onChange={(event) => setValor(event.target.value)}
+          />
+        </label>
+        {error && <div className="error">{error}</div>}
+        <button className="primary" type="submit" disabled={saving}>
+          {saving ? "Salvando…" : "Confirmar valor real"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function Overview({
   dashboard,
   gastos,
@@ -1271,7 +1346,7 @@ function Expenses({
         <div className="thead">
           <span>DESCRIÇÃO</span>
           <span>STATUS</span>
-          <span>VALOR</span>
+          <span>{view === "previstos" ? "PREVISTO / REAL" : "VALOR REAL"}</span>
         </div>
         {exibidos.map((item) => (
           <div className="trow" key={item.item_id}>
@@ -1293,14 +1368,22 @@ function Expenses({
                 type="button"
                 className="launch-item"
                 onClick={() => onLaunch(item)}
-                disabled={item.status === "pago"}
               >
-                {item.status === "pago" ? "Lançado" : "Lançar no real"}
+                {item.status === "pago" ? "Editar real" : "Lançar no real"}
               </button>
             ) : (
               <Badge status={item.status} />
             )}
-            <strong>{money.format(item.valor_real ?? item.valor_previsto)}</strong>
+            <div className="item-values">
+              <strong>
+                {money.format(
+                  view === "previstos" ? item.valor_previsto : item.valor_real ?? item.valor_previsto,
+                )}
+              </strong>
+              {view === "previstos" && item.valor_real != null && (
+                <small>Real: {money.format(item.valor_real)}</small>
+              )}
+            </div>
           </div>
         ))}
         {!exibidos.length && (
