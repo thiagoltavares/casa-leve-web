@@ -984,7 +984,7 @@ function Overview({
     ),
   );
   return (
-    <>
+    <div className="overview">
       <section className="metrics">
         <article className={`balance ${saldo < 0 ? "negative" : ""}`}>
           <small>Saldo do mês</small>
@@ -1048,7 +1048,7 @@ function Overview({
           </div>
           {(dashboard?.itens ?? [])
             .filter((item) => item.status === "a_pagar")
-            .slice(0, 4)
+            .slice(0, 3)
             .map((item) => (
             <div className="commitment" key={item.item_id}>
               <span className={item.status === "pago" ? "dot done" : "dot"} />
@@ -1177,7 +1177,7 @@ function Overview({
           </div>
         </article>
       </section>
-    </>
+    </div>
   );
 }
 function Metric({
