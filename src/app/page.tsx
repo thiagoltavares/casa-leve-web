@@ -146,6 +146,7 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [codigo, setCodigo] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const [error, setError] = useState("");
   const [casa, setCasa] = useState<Casa | null>(null);
   const [competencia, setCompetencia] = useState(competenciaAtual);
@@ -287,19 +288,27 @@ export default function Home() {
     carregar(); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [casa?.household_id, competencia]);
   async function enviarCodigo() {
+    if (authLoading) return;
     const supabase = getSupabase();
     if (!supabase) {
       setError("Configure as chaves do Supabase para entrar.");
       return;
     }
-    setError("");
-    const { error: authError } = await supabase.auth.signInWithOtp({
-      email,
-    });
-    if (authError) setError(authError.message);
-    else {
-      setCodigo("");
-      setSent(true);
+    setAuthLoading(true);
+    try {
+      setError("");
+      const { error: authError } = await supabase.auth.signInWithOtp({
+        email,
+      });
+      if (authError) setError(authError.message);
+      else {
+        setCodigo("");
+        setSent(true);
+      }
+    } catch {
+      setError("Não foi possível enviar o código. Tente novamente.");
+    } finally {
+      setAuthLoading(false);
     }
   }
   async function entrar(e: FormEvent) {
@@ -308,6 +317,7 @@ export default function Home() {
   }
   async function confirmarCodigo(e: FormEvent) {
     e.preventDefault();
+    if (authLoading) return;
     const supabase = getSupabase();
     if (!supabase) {
       setError("Configure as chaves do Supabase para entrar.");
@@ -318,14 +328,22 @@ export default function Home() {
       setError("Digite os 6 dígitos do código recebido.");
       return;
     }
-    setError("");
-    const { data, error: authError } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: "email",
-    });
-    if (authError) setError("Código inválido ou expirado. Solicite outro código.");
-    else setSession(data.session);
+    setAuthLoading(true);
+    try {
+      setError("");
+      const { data, error: authError } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: "email",
+      });
+      if (authError)
+        setError("Código inválido ou expirado. Solicite outro código.");
+      else setSession(data.session);
+    } catch {
+      setError("Não foi possível confirmar o código. Tente novamente.");
+    } finally {
+      setAuthLoading(false);
+    }
   }
   const gastos = useMemo(
     () =>
@@ -349,6 +367,7 @@ export default function Home() {
         sent={sent}
         codigo={codigo}
         setCodigo={setCodigo}
+        authLoading={authLoading}
         error={error}
         onSubmit={entrar}
         onVerify={confirmarCodigo}
@@ -579,6 +598,7 @@ function Login({
   sent,
   codigo,
   setCodigo,
+  authLoading,
   error,
   onSubmit,
   onVerify,
@@ -590,6 +610,7 @@ function Login({
   sent: boolean;
   codigo: string;
   setCodigo: (v: string) => void;
+  authLoading: boolean;
   error: string;
   onSubmit: (e: FormEvent) => void;
   onVerify: (e: FormEvent) => void;
@@ -644,6 +665,7 @@ function Login({
                   inputMode="numeric"
                   maxLength={6}
                   pattern="[0-9]*"
+                  disabled={authLoading}
                   value={codigo[index]?.trim() ?? ""}
                   onChange={(e) => atualizarCodigo(index, e.target.value)}
                   onPaste={(e) => {
@@ -658,12 +680,13 @@ function Login({
               ))}
             </fieldset>
             {error && <div className="error">{error}</div>}
-            <button className="primary" type="submit">
-              Confirmar e entrar
+            <button className="primary" type="submit" disabled={authLoading}>
+              {authLoading && <span className="button-spinner" aria-hidden="true" />}
+              {authLoading ? "Confirmando…" : "Confirmar e entrar"}
             </button>
             <div className="otp-actions">
-              <button type="button" onClick={onResend}>Reenviar código</button>
-              <button type="button" onClick={onChangeEmail}>Usar outro e-mail</button>
+              <button type="button" onClick={onResend} disabled={authLoading}>Reenviar código</button>
+              <button type="button" onClick={onChangeEmail} disabled={authLoading}>Usar outro e-mail</button>
             </div>
           </form>
         ) : (
@@ -674,13 +697,15 @@ function Login({
                 required
                 type="email"
                 value={email}
+                disabled={authLoading}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="voce@exemplo.com"
               />
             </label>
             {error && <div className="error">{error}</div>}
-            <button className="primary" type="submit">
-              Receber código de acesso
+            <button className="primary" type="submit" disabled={authLoading}>
+              {authLoading && <span className="button-spinner" aria-hidden="true" />}
+              {authLoading ? "Enviando código…" : "Receber código de acesso"}
             </button>
           </form>
         )}
