@@ -935,38 +935,50 @@ function Overview({
             </div>
           </div>
           <div className="cash-bars">
-            {serie.map((item) => (
-              <div className="cash-bar" key={item.competencia}>
-                <div>
-                  <i
-                    className="entrada"
-                    style={{
-                      height: `${Math.max(3, (item.entrada / maxSerie) * 100)}%`,
-                    }}
-                  />
-                  <em
-                    className="gasto"
-                    style={{
-                      height: `${Math.max(3, (item.gasto_real / maxSerie) * 100)}%`,
-                    }}
-                  />
-                  <b
-                    className="cartao"
-                    style={{
-                      height: `${Math.max(
-                        3,
-                        ((faturasPorMes.get(item.competencia) ?? 0) / maxSerie) * 100,
-                      )}%`,
-                    }}
-                  />
+            {serie.map((item) => {
+              const cartoes = faturasPorMes.get(item.competencia) ?? 0;
+              const rotuloMes = new Intl.DateTimeFormat("pt-BR", {
+                month: "short",
+              })
+                .format(new Date(`${item.competencia}T12:00:00`))
+                .replace(".", "");
+              return (
+                <div
+                  className="cash-bar"
+                  key={item.competencia}
+                  tabIndex={0}
+                  aria-label={`${rotuloMes}: entradas ${money.format(item.entrada)}, gastos pagos ${money.format(item.gasto_real)} e cartões ${money.format(cartoes)}`}
+                >
+                  <div>
+                    <i
+                      className="entrada"
+                      style={{
+                        height: `${Math.max(3, (item.entrada / maxSerie) * 100)}%`,
+                      }}
+                    />
+                    <em
+                      className="gasto"
+                      style={{
+                        height: `${Math.max(3, (item.gasto_real / maxSerie) * 100)}%`,
+                      }}
+                    />
+                    <b
+                      className="cartao"
+                      style={{
+                        height: `${Math.max(3, (cartoes / maxSerie) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <small>{rotuloMes}</small>
+                  <div className="cash-tooltip" role="tooltip">
+                    <b>{rotuloMes}</b>
+                    <span>Entradas <strong>{money.format(item.entrada)}</strong></span>
+                    <span>Gastos pagos <strong>{money.format(item.gasto_real)}</strong></span>
+                    <span>Cartões <strong>{money.format(cartoes)}</strong></span>
+                  </div>
                 </div>
-                <small>
-                  {new Intl.DateTimeFormat("pt-BR", { month: "short" })
-                    .format(new Date(`${item.competencia}T12:00:00`))
-                    .replace(".", "")}
-                </small>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div className="chart-key">
             <span>
