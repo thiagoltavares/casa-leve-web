@@ -125,6 +125,32 @@ const comprasDaFatura = (compras: Compra[], competencia: string) =>
     return parcela >= 1 && parcela <= compra.parcelas_total;
   });
 
+const competenciaFaturaAberta = (cartao: Cartao) => {
+  const hoje = new Date();
+  let anoFechamento = hoje.getFullYear();
+  let mesFechamento = hoje.getMonth();
+
+  if (hoje.getDate() > cartao.dia_fechamento) {
+    mesFechamento += 1;
+    if (mesFechamento === 12) {
+      mesFechamento = 0;
+      anoFechamento += 1;
+    }
+  }
+
+  let anoVencimento = anoFechamento;
+  let mesVencimento = mesFechamento;
+  if (cartao.dia_vencimento <= cartao.dia_fechamento) {
+    mesVencimento += 1;
+    if (mesVencimento === 12) {
+      mesVencimento = 0;
+      anoVencimento += 1;
+    }
+  }
+
+  return `${anoVencimento}-${String(mesVencimento + 1).padStart(2, "0")}-01`;
+};
+
 function Icon({ name }: { name: "home" | "grid" | "list" | "card" | "chart" | "refresh" | "plus" }) {
   const paths = {
     home: <><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z" /><path d="M9 21v-6h6v6" /></>,
@@ -1543,10 +1569,17 @@ function Cards({
     setDraggedId(null);
   }
   const byCard = new Map(cards.map((card) => [card.id, card]));
-  const fatura = comprasDaFatura(purchases, competencia);
-  const visible = selected
-    ? fatura.filter((purchase) => purchase.cartao_id === selected)
-    : fatura;
+  const mesAtual = competenciaAtual();
+  const competenciaDoCartao = (card: Cartao) =>
+    competencia === mesAtual ? competenciaFaturaAberta(card) : competencia;
+  const faturaDoCartao = (card: Cartao) =>
+    comprasDaFatura(
+      purchases.filter((purchase) => purchase.cartao_id === card.id),
+      competenciaDoCartao(card),
+    );
+  const fatura = cards.flatMap(faturaDoCartao);
+  const cartaoSelecionado = selected ? byCard.get(selected) : null;
+  const visible = cartaoSelecionado ? faturaDoCartao(cartaoSelecionado) : fatura;
   const selectedName = selected ? byCard.get(selected)?.nome : null;
   return (
     <section className="cards-layout">
@@ -1569,8 +1602,8 @@ function Cards({
           <div className="cards-scroll-wrap">
             <div className="cards-scroll">
               {orderedCards.map((card) => {
-                const total = fatura
-                  .filter((purchase) => purchase.cartao_id === card.id)
+                const comprasFatura = faturaDoCartao(card);
+                const total = comprasFatura
                   .reduce((sum, purchase) => sum + purchase.valor_parcela, 0);
                 return (
                   <button
@@ -1590,7 +1623,7 @@ function Cards({
                       )
                     }
                   >
-                    <small>Fatura de {mes(competencia)}</small>
+                    <small>Fatura de {mes(competenciaDoCartao(card))}</small>
                     <b>{card.nome}</b>
                     <strong>{money.format(total)}</strong>
                     <small>
@@ -1618,8 +1651,10 @@ function Cards({
             </h2>
             <p>
               {selectedName
-                ? `Parcelas ativas de ${mes(competencia)}.`
-                : `Todas as parcelas ativas de ${mes(competencia)}.`}
+                ? `Parcelas ativas de ${mes(competenciaDoCartao(cartaoSelecionado!))}.`
+                : competencia === mesAtual
+                  ? "Compras nas faturas abertas de cada cartão."
+                  : `Todas as parcelas ativas de ${mes(competencia)}.`}
             </p>
           </div>
           <button onClick={onPurchase} disabled={!cards.length}>
@@ -1640,7 +1675,7 @@ function Cards({
               <small>
                 {byCard.get(purchase.cartao_id)?.nome ?? "Cartão"} ·{" "}
                 {purchase.parcelas_total > 1
-                  ? `${parcelaNoMes(purchase.competencia_inicio, competencia)}/${purchase.parcelas_total} parcelas`
+                  ? `${parcelaNoMes(purchase.competencia_inicio, competenciaDoCartao(byCard.get(purchase.cartao_id)!))}/${purchase.parcelas_total} parcelas`
                   : "Compra do mês"}
               </small>
             </div>
