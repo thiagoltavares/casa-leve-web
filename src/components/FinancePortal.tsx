@@ -195,6 +195,7 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
   const [analise, setAnalise] = useState<Analise | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>(initialTab);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [modal, setModal] = useState<
     "recorrente" | "avulso" | "entrada" | null
   >(null);
@@ -216,6 +217,7 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
 
   const navegar = (proxima: Tab) => {
     setTab(proxima);
+    setMobileMenuOpen(false);
     router.push(rotasFinancas[proxima]);
   };
 
@@ -513,6 +515,18 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
             <Icon name="chart" />Análises
           </button>
         </nav>
+        <div className="mobile-navigation">
+          <button className="mobile-nav-toggle" type="button" onClick={() => setMobileMenuOpen((open) => !open)} aria-expanded={mobileMenuOpen}>
+            <Icon name={tab === "visao" ? "grid" : tab === "despesas" ? "list" : tab === "cartoes" ? "card" : "chart"} />
+            {tab === "visao" ? "Visão geral" : tab === "despesas" ? "Lançamentos" : tab === "cartoes" ? "Cartões" : "Análises"} <span>⌄</span>
+          </button>
+          {mobileMenuOpen && <div className="mobile-nav-menu">
+            <button onClick={() => navegar("visao")}><Icon name="grid" />Visão geral</button>
+            <button onClick={() => navegar("despesas")}><Icon name="list" />Lançamentos</button>
+            <button onClick={() => navegar("cartoes")}><Icon name="card" />Cartões</button>
+            <button onClick={() => navegar("analises")}><Icon name="chart" />Análises</button>
+          </div>}
+        </div>
         <div className="profile">
           <span className="avatar small">{casa.nome_exibicao.charAt(0)}</span>
           <div>
