@@ -2,7 +2,7 @@
 /* eslint-disable react-hooks/set-state-in-effect -- sincronização de sessão e consultas remotas */
 
 import Image from "next/image";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { type Session } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabase";
 import "./portal.css";
@@ -145,6 +145,7 @@ export default function Home() {
   const [session, setSession] = useState<Session | null>(null);
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
+  const [codigo, setCodigo] = useState("");
   const [error, setError] = useState("");
   const [casa, setCasa] = useState<Casa | null>(null);
   const [competencia, setCompetencia] = useState(competenciaAtual);
@@ -285,19 +286,46 @@ export default function Home() {
   useEffect(() => {
     carregar(); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [casa?.household_id, competencia]);
+  async function enviarCodigo() {
+    const supabase = getSupabase();
+    if (!supabase) {
+      setError("Configure as chaves do Supabase para entrar.");
+      return;
+    }
+    setError("");
+    const { error: authError } = await supabase.auth.signInWithOtp({
+      email,
+    });
+    if (authError) setError(authError.message);
+    else {
+      setCodigo("");
+      setSent(true);
+    }
+  }
   async function entrar(e: FormEvent) {
+    e.preventDefault();
+    await enviarCodigo();
+  }
+  async function confirmarCodigo(e: FormEvent) {
     e.preventDefault();
     const supabase = getSupabase();
     if (!supabase) {
       setError("Configure as chaves do Supabase para entrar.");
       return;
     }
-    const { error: authError } = await supabase.auth.signInWithOtp({
+    const token = codigo.replace(/\s/g, "");
+    if (token.length !== 6) {
+      setError("Digite os 6 dígitos do código recebido.");
+      return;
+    }
+    setError("");
+    const { data, error: authError } = await supabase.auth.verifyOtp({
       email,
-      options: { emailRedirectTo: window.location.origin },
+      token,
+      type: "email",
     });
-    if (authError) setError(authError.message);
-    else setSent(true);
+    if (authError) setError("Código inválido ou expirado. Solicite outro código.");
+    else setSession(data.session);
   }
   const gastos = useMemo(
     () =>
@@ -319,8 +347,17 @@ export default function Home() {
         email={email}
         setEmail={setEmail}
         sent={sent}
+        codigo={codigo}
+        setCodigo={setCodigo}
         error={error}
         onSubmit={entrar}
+        onVerify={confirmarCodigo}
+        onResend={enviarCodigo}
+        onChangeEmail={() => {
+          setSent(false);
+          setCodigo("");
+          setError("");
+        }}
       />
     );
   if (loading && !dashboard)
@@ -540,15 +577,45 @@ function Login({
   email,
   setEmail,
   sent,
+  codigo,
+  setCodigo,
   error,
   onSubmit,
+  onVerify,
+  onResend,
+  onChangeEmail,
 }: {
   email: string;
   setEmail: (v: string) => void;
   sent: boolean;
+  codigo: string;
+  setCodigo: (v: string) => void;
   error: string;
   onSubmit: (e: FormEvent) => void;
+  onVerify: (e: FormEvent) => void;
+  onResend: () => void;
+  onChangeEmail: () => void;
 }) {
+  const codigoInputs = useRef<(HTMLInputElement | null)[]>([]);
+  const atualizarCodigo = (index: number, value: string) => {
+    const digitos = value.replace(/\D/g, "");
+    const proximo = codigo.padEnd(6, " ").split("");
+    if (!digitos) proximo[index] = " ";
+    else {
+      digitos.slice(0, 6 - index).split("").forEach((digito, offset) => {
+        proximo[index + offset] = digito;
+      });
+    }
+    setCodigo(proximo.join(""));
+    const proximoIndex = Math.min(index + Math.max(digitos.length, 1), 5);
+    if (digitos) codigoInputs.current[proximoIndex]?.focus();
+  };
+  const colarCodigo = (value: string) => {
+    const digitos = value.replace(/\D/g, "").slice(0, 6);
+    if (!digitos) return;
+    setCodigo(digitos);
+    codigoInputs.current[Math.min(digitos.length, 5)]?.focus();
+  };
   return (
     <main className="login">
       <section>
@@ -561,10 +628,44 @@ function Login({
           Entre com o mesmo e-mail que você usa no Casa Leve para continuar.
         </p>
         {sent ? (
-          <div className="sent">
-            <b>Confira seu e-mail.</b>
-            <span>Enviamos um link seguro para entrar.</span>
-          </div>
+          <form className="otp-form" onSubmit={onVerify}>
+            <div className="sent">
+              <b>Digite o código de 6 dígitos.</b>
+              <span>Enviamos um código para {email}.</span>
+            </div>
+            <fieldset className="otp-inputs">
+              <legend>Código de acesso</legend>
+              {Array.from({ length: 6 }, (_, index) => (
+                <input
+                  key={index}
+                  ref={(element) => { codigoInputs.current[index] = element; }}
+                  aria-label={`Dígito ${index + 1} do código`}
+                  autoComplete={index === 0 ? "one-time-code" : "off"}
+                  inputMode="numeric"
+                  maxLength={6}
+                  pattern="[0-9]*"
+                  value={codigo[index]?.trim() ?? ""}
+                  onChange={(e) => atualizarCodigo(index, e.target.value)}
+                  onPaste={(e) => {
+                    e.preventDefault();
+                    colarCodigo(e.clipboardData.getData("text"));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Backspace" && !codigo[index] && index > 0)
+                      codigoInputs.current[index - 1]?.focus();
+                  }}
+                />
+              ))}
+            </fieldset>
+            {error && <div className="error">{error}</div>}
+            <button className="primary" type="submit">
+              Confirmar e entrar
+            </button>
+            <div className="otp-actions">
+              <button type="button" onClick={onResend}>Reenviar código</button>
+              <button type="button" onClick={onChangeEmail}>Usar outro e-mail</button>
+            </div>
+          </form>
         ) : (
           <form onSubmit={onSubmit}>
             <label>
@@ -579,7 +680,7 @@ function Login({
             </label>
             {error && <div className="error">{error}</div>}
             <button className="primary" type="submit">
-              Receber link de acesso →
+              Receber código de acesso
             </button>
           </form>
         )}
