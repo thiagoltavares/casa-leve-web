@@ -438,6 +438,32 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
       },
     };
   }, [competencia, dashboard, faturasOficiais]);
+  async function lancarPrevistoNoMes(item: Item) {
+    if (!casa) return;
+    const supabase = getSupabase();
+    if (!supabase) return;
+    setLoading(true);
+    setError("");
+    const { error: launchError } = await supabase
+      .from("orcamento_realizado")
+      .upsert(
+        {
+          household_id: casa.household_id,
+          item_id: item.item_id,
+          competencia,
+          valor_real: item.valor_previsto,
+          status: "pago",
+          pago_em: new Date().toISOString(),
+        },
+        { onConflict: "item_id,competencia" },
+      );
+    if (launchError) {
+      setError(launchError.message);
+      setLoading(false);
+      return;
+    }
+    await carregar();
+  }
   if (!session)
     return (
       <Login
@@ -594,6 +620,7 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
               setEntradaEditando(entry);
               setModal("entrada");
             }}
+            onLaunch={lancarPrevistoNoMes}
           />
         )}
         {tab === "cartoes" && (
@@ -1050,6 +1077,7 @@ function Expenses({
   entries,
   competencia,
   onEditEntry,
+  onLaunch,
 }: {
   dashboard: Dashboard | null;
   cards: Cartao[];
@@ -1058,7 +1086,9 @@ function Expenses({
   entries: Entrada[];
   competencia: string;
   onEditEntry: (entry: Entrada) => void;
+  onLaunch: (item: Item) => void;
 }) {
+  const [view, setView] = useState<"realizados" | "previstos">("realizados");
   const entradasDoMes = entries.filter(
     (entry) =>
       entry.competencia <= competencia &&
@@ -1124,13 +1154,44 @@ function Expenses({
     })),
     ...faturas,
   ];
+  const realizados = rows.filter((item) => item.status === "pago");
+  const previstos = [
+    ...(dashboard?.itens ?? []).map((item) => ({
+      ...item,
+      cartao: null as string | null,
+      itens: 0,
+      podeLancar: true,
+    })),
+    ...faturas.map((item) => ({ ...item, podeLancar: false })),
+  ];
+  const exibidos = view === "realizados" ? realizados : previstos;
   return (
     <article className="card table-card">
       <div className="card-title">
         <div>
-          <h2>Lançamentos do mês</h2>
-          <p>Contas, despesas avulsas e uma fatura consolidada por cartão.</p>
+          <h2>Lançamentos</h2>
+          <p>Registre pagamentos e acompanhe os valores previstos.</p>
         </div>
+      </div>
+      <div className="launch-tabs" role="tablist" aria-label="Tipo de lançamento">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "realizados"}
+          className={view === "realizados" ? "active" : ""}
+          onClick={() => setView("realizados")}
+        >
+          Realizados
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "previstos"}
+          className={view === "previstos" ? "active" : ""}
+          onClick={() => setView("previstos")}
+        >
+          Previstos
+        </button>
       </div>
       {!!entradasDoMes.length && (
         <div className="income-list">
@@ -1160,7 +1221,7 @@ function Expenses({
           <span>STATUS</span>
           <span>VALOR</span>
         </div>
-        {rows.map((item) => (
+        {exibidos.map((item) => (
           <div className="trow" key={item.item_id}>
             <div>
               <b>{item.descricao}</b>
@@ -1175,16 +1236,26 @@ function Expenses({
                   : ""}
               </small>
             </div>
-            <Badge status={item.status} />
-            <strong>
-              {money.format(item.valor_real ?? item.valor_previsto)}
-            </strong>
+            {view === "previstos" && "podeLancar" in item && item.podeLancar ? (
+              <button
+                type="button"
+                className="launch-item"
+                onClick={() => onLaunch(item)}
+                disabled={item.status === "pago"}
+              >
+                {item.status === "pago" ? "Lançado" : "Lançar no real"}
+              </button>
+            ) : (
+              <Badge status={item.status} />
+            )}
+            <strong>{money.format(item.valor_real ?? item.valor_previsto)}</strong>
           </div>
         ))}
-        {!rows.length && (
+        {!exibidos.length && (
           <div className="empty">
-            Sem lançamentos por aqui. Adicione o primeiro gasto para montar seu
-            mês.
+            {view === "realizados"
+              ? "Ainda não há gastos pagos neste mês."
+              : "Ainda não há valores previstos para este mês."}
           </div>
         )}
       </div>
