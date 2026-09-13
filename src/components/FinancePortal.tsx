@@ -89,6 +89,11 @@ type Compra = {
   parcelas_total: number;
   competencia_inicio: string;
 };
+type FaturaOficial = {
+  cartao_id: string;
+  competencia: string;
+  total_aberto: number;
+};
 type Categoria = { id: string; nome: string; cor: string };
 type Entrada = {
   id: string;
@@ -201,6 +206,7 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
   const [addMenu, setAddMenu] = useState(false);
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
   const [compras, setCompras] = useState<Compra[]>([]);
+  const [faturasOficiais, setFaturasOficiais] = useState<FaturaOficial[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [entradas, setEntradas] = useState<Entrada[]>([]);
 
@@ -282,7 +288,7 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
     if (!supabase) return;
     setLoading(true);
     setError("");
-    const [painel, analises, cards, purchases, categories, incomes] =
+    const [painel, analises, cards, purchases, faturas, categories, incomes] =
       await Promise.all([
         supabase.rpc("dashboard_financas", {
           p_household_id: casa.household_id,
@@ -306,6 +312,10 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
           .eq("household_id", casa.household_id)
           .order("competencia_inicio", { ascending: false }),
         supabase
+          .from("faturas_cartao")
+          .select("cartao_id,competencia,total_aberto")
+          .eq("household_id", casa.household_id),
+        supabase
           .from("financas_categorias")
           .select("id,nome,cor")
           .eq("household_id", casa.household_id)
@@ -322,6 +332,8 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
     if (!analises.error) setAnalise(analises.data as Analise);
     if (!cards.error) setCartoes((cards.data ?? []) as Cartao[]);
     if (!purchases.error) setCompras((purchases.data ?? []) as Compra[]);
+    if (!faturas.error)
+      setFaturasOficiais((faturas.data ?? []) as FaturaOficial[]);
     if (!categories.error)
       setCategorias((categories.data ?? []) as Categoria[]);
     if (!incomes.error) setEntradas((incomes.data ?? []) as Entrada[]);
@@ -550,6 +562,7 @@ export default function FinancePortal({ initialTab }: { initialTab: Tab }) {
           <Cards
             cards={cartoes}
             purchases={compras}
+            faturasOficiais={faturasOficiais}
             competencia={competencia}
             onCard={() => {
               setCartaoEditando(null);
@@ -1537,6 +1550,7 @@ function AddChoice({
 function Cards({
   cards,
   purchases,
+  faturasOficiais,
   competencia,
   onCard,
   onEditCard,
@@ -1544,6 +1558,7 @@ function Cards({
 }: {
   cards: Cartao[];
   purchases: Compra[];
+  faturasOficiais: FaturaOficial[];
   competencia: string;
   onCard: () => void;
   onEditCard: (card: Cartao) => void;
@@ -1603,8 +1618,13 @@ function Cards({
             <div className="cards-scroll">
               {orderedCards.map((card) => {
                 const comprasFatura = faturaDoCartao(card);
-                const total = comprasFatura
+                const totalCalculado = comprasFatura
                   .reduce((sum, purchase) => sum + purchase.valor_parcela, 0);
+                const total = faturasOficiais.find(
+                  (faturaOficial) =>
+                    faturaOficial.cartao_id === card.id &&
+                    faturaOficial.competencia === competenciaDoCartao(card),
+                )?.total_aberto ?? totalCalculado;
                 return (
                   <button
                     type="button"
